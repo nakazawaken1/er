@@ -1,10 +1,11 @@
+<!DOCTYPE html>
 <style type="text/css">
 *{
   font-family: sans-serif;
   line-height: 24px;
   font-size: 16px;
 }
-button {
+button,input {
   font-size: 12px;
   padding: 0 4px;
   line-height: 20px;
@@ -17,7 +18,7 @@ body {
   bottom: 0;
   background-color: gray;
 }
-#toolbar {
+#header {
   position: fixed;
   left: 4px;
   top: 4px;
@@ -26,7 +27,7 @@ body {
   background-color: silver;
   padding: 0 4px;
 }
-#canvas {
+#body {
   position: fixed;
   left: 4px;
   top: 32px;
@@ -34,14 +35,172 @@ body {
   bottom: 4px;
   background-color: whitesmoke;
 }
+#canvas {
+  width: 100%;
+  height: 100%;
+}
 #version {
   float: right;
   font-size: 14px;
 }
+rect:hover {
+  fill: yellow;
+}
+.selected,.selected:hover {
+  fill: gold;
+}
+a, a:visited, label[for=import] {
+  cursor: pointer;
+  text-decoration: underline;
+  color: blue;
+}
 </style>
-<div id="toolbar">
+<div id="header">
 <span id="version">ER Tool rev.0.1.2018.06.27</span>
-<button>Table</button>
+<label for="active_selector"><input type="radio" name="active" id="active_selector" value="selector" checked="checked"/>Selector</label>
+<label for="active_table"><input type="radio" name="active" id="active_table" value="table"/>Table</label>
+<label for="active_connector"><input type="radio" name="active" id="active_connector" value="connector"/>Connector</label>
+<a id="export" href="#" download="a.svg">Export</a>
+<label for="import">Import<input type="file" id="import" style="display:none"/></label>
 </div>
-<div id="canvas">
+<div id="body">
+  <svg id="canvas" draggable="false">
+  </svg>
 </div>
+<script type="text/javascript">
+window.addEventListener('load', function() {
+  var each = function(array, process) {
+    for(var i = 0, i2 = array.length; i < i2; i++) {
+      process.apply(array[i]);
+    }
+  };
+  var indexOf = function(array, process) {
+    for(var i = 0, i2 = array.length; i < i2; i++) {
+      if(process.apply(array[i])) {
+        return i;
+      }
+    }
+    return -1;
+  };
+  var filter = function(array, process) {
+    var filtered = [];
+    for(var i = 0, i2 = array.length; i < i2; i++) {
+      if(process.apply(array[i])) {
+        filtered.push(array[i]);
+      }
+    }
+    return filtered;
+  };
+  var left = 4;
+  var top = 32;
+  var canvas = document.getElementById('canvas');
+  var isActive = function(command) {
+    return document.querySelector('input[name=active]:checked').value == command;
+  };
+  var active = function(command) {
+    document.querySelector('input[name=active][value=' + command + ']').checked = true;
+  };
+  var add = function(type, attrMap) {
+    var element = document.createElementNS('http://www.w3.org/2000/svg', type);
+    for(var k in attrMap) {
+      element.setAttribute(k, attrMap[k]);
+    }
+    canvas.appendChild(element);
+  };
+  var move = function(element, x, y) {
+    element.setAttribute('x', x - left - element.getAttribute('width') / 2);
+    element.setAttribute('y', y - top - element.getAttribute('height') / 2);
+  };
+  window.addEventListener('resize', function() {
+     canvas.setAttribute('viewBox', '0 0 ' + canvas.clientWidth + ' ' + canvas.clientHeight);
+  });
+  var selections = [];//e, x, y
+  var clearSelections = function() {
+    each(selections, function() {
+      this.e.setAttribute('class', '');
+    });
+    selections = [];
+  };
+  var dragging = null;
+  document.addEventListener('mousedown', function(e) {
+    switch(e.target.tagName) {
+    case 'rect':
+      var index = indexOf(selections, function() {
+        return this.e == e.target;
+      });
+      var data = { e: e.target, x: e.clientX, y: e.clientY };
+      if(index < 0) {
+        e.target.setAttribute('class', 'selected');
+        selections.push(data);
+      } else {
+        selections[index] = data;
+      }
+      dragging = { x: e.clientX, y: e.clientY, first: index < 0 };
+      break;
+    case 'svg':
+      clearSelections();
+      break;
+    }
+  });
+  document.addEventListener('mousemove', function(e) {
+    if(dragging == null) {
+      return;
+    }
+    dragging.moved = true;
+    each(selections, function() {
+      move(this.e, this.x + e.clientX - dragging.x, this.y + e.clientY - dragging.y);
+    });
+  });
+  document.addEventListener('mouseup', function(e) {
+    if(dragging) {
+      if(dragging.moved) {
+        var origin = filter(selections, function() {
+          return this.e == e.target;
+        })[0];
+        var x = e.clientX - origin.x;
+        var y = e.clientY - origin.y;
+        each(selections, function() {
+          this.x += x;
+          this.y += y;
+        });
+      } else if(!dragging.first) {
+        var index = indexOf(selections, function() {
+          return this.e == e.target;
+        });
+        if(index >= 0) {
+          e.target.setAttribute('class', '');
+          selections.splice(index, 1);
+        }
+      }
+    }
+    dragging = null;
+    if(isActive('table')) {
+      var w = 50;
+      var h = 20;
+      add('rect', {
+          x: e.clientX - left - w / 2,
+          y: e.clientY - top - h / 2,
+          width: w,
+          height: h,
+          fill: 'white',
+          stroke: 'black' });
+      active('selector');
+    }
+  });
+  document.getElementById('export').addEventListener('click', function(e) {
+    var name = prompt('Enter file name');
+    if(name == null || name == '') {
+      return false;
+    }
+    this.setAttribute('download', name);
+    this.setAttribute('href', 'data:image/svg+xml;charset=UTF-8,<svg xmlns="http://www.w3.org/2000/svg">' + encodeURIComponent(canvas.innerHTML) + '</svg>');
+  });
+  document.getElementById('import').addEventListener('change', function(e) {
+    var reader = new FileReader();
+    reader.onload = function() {
+      canvas.innerHTML = reader.result.replace(/<svg[^>]*>/, '').replace(/<\/svg>\s*/, '');
+    };
+    reader.readAsText(this.files[0]);
+  });
+});
+</script>
